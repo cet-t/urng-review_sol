@@ -1,0 +1,12 @@
+# N=2000000, runs=9, median ns/output, seed=123
+SplitMix64,0.567650
+Xoshiro256Pp,0.768050
+Sfc32,0.567250
+Sfc64,0.535600
+Philox32,3.990900
+Pcg32,0.765600
+ChaCha20,6.594700
+Salsa20,6.858550
+Sfc32_randi_0_1e9,0.765750
+wide_SplitMix32x16,0.296800
+cabi_SplitMix64_16MB,0.142650

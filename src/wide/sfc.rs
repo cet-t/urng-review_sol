@@ -22,10 +22,10 @@ macro_rules! impl_variants {
             #[allow(dead_code)]
             #[repr(C, align(64))]
             pub struct [<Sfc32x $size>] {
-                a: [<u32x $size>],
-                b: [<u32x $size>],
-                c: [<u32x $size>],
-                counter: [<u32x $size>],
+                pub(crate) a: [<u32x $size>],
+                pub(crate) b: [<u32x $size>],
+                pub(crate) c: [<u32x $size>],
+                pub(crate) counter: [<u32x $size>],
             }
 
             #[allow(dead_code)]

@@ -15,7 +15,7 @@ use crate::rng::Rng;
 #[repr(C, align(64))]
 #[derive(Debug, Clone, Copy)]
 pub struct Xoshiro256Pp {
-    s: [wu64; 4],
+    pub(crate) s: [wu64; 4],
 }
 
 impl Xoshiro256Pp {
@@ -65,7 +65,7 @@ impl Rng for Xoshiro256Pp {
 #[repr(C, align(64))]
 #[derive(Debug, Clone, Copy)]
 pub struct Xoshiro256Ss {
-    s: [wu64; 4],
+    pub(crate) s: [wu64; 4],
 }
 
 impl Xoshiro256Ss {
@@ -103,17 +103,20 @@ impl Rng for Xoshiro256Ss {
     }
 }
 
-#[cfg(feature = "simd")]
+#[cfg(all(feature = "simd", target_arch = "x86_64"))]
 pub use simd::*;
 
-#[cfg(feature = "simd")]
+#[cfg(all(feature = "simd", target_arch = "x86_64"))]
 pub mod simd {
     #[cfg(target_arch = "x86_64")]
     use std::arch::x86_64::*;
 
     use crate::prng::b64::SplitMix64;
 
-    /// AVX-512 vectorized xoshiro256++ variant producing 2 `u64` values per call.
+    /// Two xoshiro256** streams in packed SIMD storage.
+    ///
+    /// Uses a portable scalar step for this packed layout. No AVX-512 CPU
+    /// support is needed for these safe methods.
     #[cfg(target_arch = "x86_64")]
     #[repr(C, align(64))]
     pub struct Xoshiro256Ssx2 {
@@ -127,10 +130,8 @@ pub mod simd {
             let mut seedgen = SplitMix64::new(seed);
             let s = [0u64; 8].map(|_| seedgen.nextu_const());
 
-            unsafe {
-                Self {
-                    s: _mm512_loadu_si512(s.as_ptr() as *const _),
-                }
+            Self {
+                s: unsafe { std::mem::transmute::<[u64; 8], __m512i>(s) },
             }
         }
 
@@ -138,37 +139,53 @@ pub mod simd {
         #[cfg(target_arch = "x86_64")]
         #[inline(always)]
         pub fn nextu(&mut self) -> [u64; 2] {
-            let s = &mut self.s;
-            unsafe {
-                // let res = wrap!((s[0] + s[3]).0.rotate_left(23)) + s[0];
-                let res = _mm512_add_epi64(
-                    _mm512_rol_epi64(
-                        _mm512_add_epi64(*s, _mm512_shuffle_epi32(*s, 0b11_10_01_00)),
-                        23,
-                    ),
-                    *s,
-                );
-                // let t = s[1] << 17;
-                let t = _mm512_slli_epi64(_mm512_shuffle_epi32(*s, 0b01_00_11_10), 17);
-
-                // s[2] ^= s[0];
-                *s = _mm512_xor_si512(*s, _mm512_shuffle_epi32(*s, 0b10_11_00_01));
-                // s[3] ^= s[1];
-                *s = _mm512_xor_si512(*s, _mm512_shuffle_epi32(*s, 0b11_10_01_00));
-                // s[1] ^= s[2];
-                *s = _mm512_xor_si512(*s, _mm512_shuffle_epi32(*s, 0b00_01_10_11));
-                // s[0] ^= s[3];
-                *s = _mm512_xor_si512(*s, _mm512_shuffle_epi32(*s, 0b01_00_11_10));
-
-                // s[2] ^= t;
-                *s = _mm512_xor_si512(*s, t);
-                // s[3] = wrap!(s[3].0.rotate_left(45));
-                *s = _mm512_rol_epi64(*s, 45);
-
-                // res.0
-                let mut out = [0u64; 2];
-                _mm512_stream_si512(out.as_mut_ptr() as *mut __m512i, res);
+            // Array conversion copies bits and imposes no SIMD target features.
+            let mut state: [u64; 8] = unsafe { std::mem::transmute(self.s) };
+            let out = std::array::from_fn(|lane| {
+                let s = &mut state[lane * 4..lane * 4 + 4];
+                let out = s[1].wrapping_mul(5).rotate_left(7).wrapping_mul(9);
+                let t = s[1] << 17;
+                s[2] ^= s[0];
+                s[3] ^= s[1];
+                s[1] ^= s[2];
+                s[0] ^= s[3];
+                s[2] ^= t;
+                s[3] = s[3].rotate_left(45);
                 out
+            });
+            self.s = unsafe { std::mem::transmute::<[u64; 8], __m512i>(state) };
+            out
+        }
+    }
+
+    #[cfg(test)]
+    mod regression {
+        use super::*;
+        use crate::Rng;
+
+        #[test]
+        fn packed_ss_has_two_correct_lanes_without_wide_stores() {
+            // Independent author's-state known answer: state [1,2,3,4] => 11520.
+            // https://prng.di.unimi.it/xoshiro256starstar.c
+            let mut packed = Xoshiro256Ssx2 {
+                s: unsafe { std::mem::transmute([1u64, 2, 3, 4, 1, 2, 3, 4]) },
+            };
+            assert_eq!(packed.nextu(), [11520, 11520]);
+            for seed in [0, 1, 2, 123, u64::MAX] {
+                let mut sm = SplitMix64::new(seed);
+                let words = std::array::from_fn::<_, 8, _>(|_| super::super::wrap!(sm.nextu()));
+                let mut expected = [
+                    super::super::Xoshiro256Ss {
+                        s: words[..4].try_into().unwrap(),
+                    },
+                    super::super::Xoshiro256Ss {
+                        s: words[4..].try_into().unwrap(),
+                    },
+                ];
+                let mut packed = Xoshiro256Ssx2::new(seed);
+                for _ in 0..256 {
+                    assert_eq!(packed.nextu(), std::array::from_fn(|i| expected[i].nextu()));
+                }
             }
         }
     }

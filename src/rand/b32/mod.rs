@@ -1,4 +1,4 @@
-use crate::{Rng, cbrng::b32::*, prng::b32::*};
+use crate::{cbrng::b32::*, prng::b32::*};
 
 crate::impl_rand_trait! {
     Mt19937,
@@ -70,3 +70,6 @@ mod tests {
         assert_eq!(rng0.next_u32(), rng1.next_u32());
     }
 }
+
+crate::impl_rand_trait!(Jsf32, Threefry32x2, Threefry32x4);
+crate::impl_try_rng_trait!(Jsf32, Threefry32x2, Threefry32x4);

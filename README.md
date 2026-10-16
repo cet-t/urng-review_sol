@@ -10,7 +10,7 @@ This crate provides a wide variety of algorithms, ranging from standard Mersenne
 ## Supported Generators
 
 Generators are divided into standard generators, portable wide generators, and AVX-accelerated SIMD generators.
-Standard generators implement the unified `Rng` trait (`Word = u32` or `Word = u64`; SIMD/counter-based variants return fixed-size arrays instead).
+Standard generators implement the unified `Rng` trait (`Word = u32` or `Word = u64`). Counter-based generators buffer blocks and also return scalar words through `Rng`; their `next_raw` methods expose whole blocks.
 Portable wide generators require the `wide` feature and expose safe fixed-array bulk APIs.
 AVX generators expose a bulk-generation API and are listed separately; they require the `simd` feature.
 
@@ -29,10 +29,9 @@ AVX generators expose a bulk-generation API and are listed separately; they requ
 | `Sfmt86243`     | SFMT             | $2^{86243}-1$    |
 | `Sfmt132049`    | SFMT             | $2^{132049}-1$   |
 | `Sfmt216091`    | SFMT             | $2^{216091}-1$   |
-| `Sfc32`         | SFC32            | $2^{127}-1$      |
-| `Sfc32x4`       | SFC32 x4         | $2^{127}-1$      |
+| `Sfc32`         | SFC32            | 128-bit state    |
 | `Pcg32`         | PCG-XSH-RR       | $2^{64}$         |
-| `Philox32x4`    | Philox 4x32      | -                |
+| `Philox32`      | Philox 4x32-10   | -                |
 | `SplitMix32`    | SplitMix32       | $2^{32}$         |
 | `Xorwow`        | XORWOW           | $2^{192}-2^{32}$ |
 | `Xorshift32`    | Xorshift         | $2^{32}-1$       |
@@ -52,7 +51,7 @@ AVX generators expose a bulk-generation API and are listed separately; they requ
 | `Xoshiro256Pp`   | xoshiro256++        | $2^{256}-1$      |
 | `Xoshiro256Ss`   | xoshiro256\*\*      | $2^{256}-1$      |
 | `SplitMix64`     | SplitMix64          | $2^{64}$         |
-| `Sfc64`          | SFC64               | $2^{256}$ approx |
+| `Sfc64`          | SFC64               | 256-bit state    |
 | `Mt1993764`      | Mersenne Twister 64 | $2^{19937}-1$    |
 | `Sfmt1993764`    | SFMT 64             | $2^{19937}-1$    |
 | `Philox64`       | Philox 2x64         | -                |
@@ -63,7 +62,7 @@ AVX generators expose a bulk-generation API and are listed separately; they requ
 | `Cet64`          | CET                 | $2^{64}$         |
 | `Cet256`         | CET                 | $2^{256}$        |
 | `Threefish256`   | Threefish-256       | -                |
-| `Biski64`        | Biski64             | $2^{64}$         |
+| `Biski64`        | Biski64             | 192-bit state    |
 
 ### Portable Wide Generators (`urng::wide`)
 
@@ -86,17 +85,20 @@ These generators use the portable `wide` crate and expose safe `nextu`, `nextf`,
 
 Example:
 
-```rust,norun
-use urng::wide::{WRng, Xoshiro128Ppx16};
+```rust
+# #[cfg(feature = "wide")]
+# {
+use urng::wide::{RngW, Xoshiro128Ppx16};
 
 let mut rng = Xoshiro128Ppx16::new(1);
 let values: [u32; 16] = rng.nextu();
 let floats: [f32; 16] = rng.nextf();
+# }
 ```
 
 ### SIMD Generators (AVX)
 
-These generators expose a bulk-generation API and require AVX support at runtime.
+These generators require `simd` and x86_64. AVX2/AVX-512 implementations require the corresponding CPU features; safe methods check them before executing instructions. Unsafe methods retain their documented CPU preconditions. `Sfc32x4` uses baseline SSE2, and `Xoshiro256Ssx2` uses a portable two-stream step with SIMD storage. The latter requires no AVX-512 instructions.
 
 #### AVX2 (`avx2`)
 
@@ -107,6 +109,8 @@ These generators expose a bulk-generation API and require AVX support at runtime
 | `Xoroshiro64Ssx8` | xoroshiro64\*\* x8 | 8×`u32` |
 
 #### AVX-512 (`avx512f`)
+
+`Squares32x8`, `Cet64x8`, and `Cet256x2` additionally require `avx512dq` for generation.
 
 | Struct             | Algorithm           | Output   |
 | ------------------ | ------------------- | -------- |
@@ -146,7 +150,7 @@ Hardware-noise-assisted seed generation. Wraps an existing `Rng` and mixes in ha
 
 | Struct    | Module          | Input RNG                             | Output                           |
 | --------- | --------------- | ------------------------------------- | -------------------------------- |
-| `SeedGen` | `urng::seedgen` | `Rng<Word = u32>` / `Rng<Word = u64>` | `(u32, u32)` / `(u64, u64)` pair |
+| `SeedGen` | `urng::` | `Rng<Word = u32>` / `Rng<Word = u64>` | `(u32, u32)` / `(u64, u64)` pair |
 
 `next_seed_pair()` returns `(raw, processed)` — the raw hardware value and the mixed seed.
 
@@ -182,7 +186,13 @@ for r in results.iter() {
 
 ## Usage Examples
 
-Most generators expose the same basic workflow: create an instance with `new`, then use `nextu`, `nextf`, `randi`, `randf`, or `choice` depending on the output type you need. SIMD and counter-based generators return fixed-size arrays instead of single values.
+Most generators expose the same basic workflow: create an instance with `new`, then use `nextu`, `nextf`, `randi`, `randf`, or `choice` depending on the output type you need. SIMD and wide generators return fixed-size arrays or intrinsic vectors. Counter-based `Rng` implementations return scalar words.
+
+`Rng::randi` and `Rng::index` use rejection sampling for unbiased integer ranges. The single-word `Word::to_randi` and `Word::to_index` are fixed-cost multiply/shift mappings and can be biased. Invalid integer ranges panic; float ranges require finite `min < max` and exclude the upper endpoint, including after rounding. Weighted samplers require a nonempty list of finite, nonnegative weights with at least one positive weight.
+
+Explicit integer seeds are deterministic, but corrected algorithms and conversions change sequences from the original 1.0.0 implementation. `Default`, `SeedGen`, and 32-bit convenience seeds must not be treated as secret-key entropy. ChaCha and Salsa additionally expose `from_key_nonce` for full keys; callers must supply suitable keys and avoid reusing a key/nonce pair.
+
+The `rand` feature supplies `rand_core::TryRng` and `SeedableRng` adapters for the scalar PRNGs, Philox32/64, Squares32, Threefry32x2/x4, and Threefish256. Its existing four-byte `SeedableRng::Seed` uses little-endian bytes; 64-bit native seeds remain available through `new(u64)`.
 
 Scalar generators (both 32-bit and 64-bit; SIMD variants are not included) also implement `Default`, seeding themselves from a time-based, per-call mix so no explicit seed is required:
 
@@ -235,11 +245,15 @@ This crate exports a C-compatible ABI generic interface. Each generator has corr
 Example for `Mt19937`:
 
 ```c
-void* mt19937_new(uint32_t seed, size_t warm);
+void* mt19937_new(uint32_t seed);
 void mt19937_next_u32s(void* ptr, uint32_t* out, size_t count);
 void mt19937_rand_f32s(void* ptr, float* out, size_t count, float min, float max);
 void mt19937_free(void* ptr);
 ```
+
+Rust callers must use `unsafe` for free/fill functions and satisfy the ownership and allocation contract in `urng::cabi`. Constructors return owned handles; SIMD constructors return null on unsupported CPUs. A zero-length fill is a no-op and accepts null pointers. Nonempty output may be uninitialized but must be sufficiently large, correctly aligned for its element type, exclusively writable, and disjoint from state. Checks reject null/misaligned pointers, overflowing lengths, overlapping state/output, and invalid ranges, but cannot validate arbitrary pointers, allocation extents, concurrent use, or double-free.
+
+Scalar C fills follow the Rust stream regardless of call boundaries. SIMD fills flatten lanes in order and consume a partial final block in full; the next call starts at a new block. C fills now use cached sequential stores and the shared generation core, without parallel reseeding or NT-store paths. This prioritizes correctness over the original memory-bandwidth benchmark results.
 
 [SeedableRng]: https://docs.rs/rand_core/latest/rand_core/trait.SeedableRng.html
 [TryRng]: https://docs.rs/rand_core/latest/rand_core/trait.TryRng.html

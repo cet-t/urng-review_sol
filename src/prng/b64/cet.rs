@@ -15,7 +15,7 @@ use crate::rng::Rng;
 #[repr(C, align(64))]
 #[derive(Debug, Clone, Copy)]
 pub struct Cet64 {
-    s: wu64,
+    pub(crate) s: wu64,
 }
 
 const SP1: u64 = 0xFFFFFFFFFFFFFF43;
@@ -62,7 +62,7 @@ impl Rng for Cet64 {
 #[repr(C, align(64))]
 #[derive(Debug, Clone, Copy)]
 pub struct Cet256 {
-    s: [wu64; 4],
+    pub(crate) s: [wu64; 4],
 }
 
 impl Cet256 {
@@ -106,10 +106,10 @@ impl Rng for Cet256 {
     }
 }
 
-#[cfg(feature = "simd")]
+#[cfg(all(feature = "simd", target_arch = "x86_64"))]
 pub use simd::*;
 
-#[cfg(feature = "simd")]
+#[cfg(all(feature = "simd", target_arch = "x86_64"))]
 pub mod simd {
     use std::arch::x86_64::*;
 
@@ -122,13 +122,17 @@ pub mod simd {
     #[cfg(target_arch = "x86_64")]
     #[repr(C, align(64))]
     pub struct Cet64x8 {
-        s: __m512i,
+        pub(crate) s: __m512i,
     }
 
     #[cfg(target_arch = "x86_64")]
     impl Cet64x8 {
         /// Creates a new `Cet64x8` from 8 independent seeds.
         pub fn new(seed: u64) -> Self {
+            assert!(
+                std::arch::is_x86_feature_detected!("avx512f"),
+                "Cet64x8 requires avx512f"
+            );
             let mut seedgen = SplitMix64::new(seed);
             let s = [0u64; 8].map(|_| seedgen.nextu_const());
             unsafe {
@@ -158,6 +162,10 @@ pub mod simd {
         #[target_feature(enable = "avx512f,avx512dq")]
         #[allow(unsafe_op_in_unsafe_fn)]
         pub unsafe fn nextu(&mut self) -> [u64; 8] {
+            assert!(
+                std::arch::is_x86_feature_detected!("avx512f"),
+                "Cet64x8 requires avx512f"
+            );
             let sp1 = _mm512_set1_epi64(SP1 as i64);
             let p1 = _mm512_set1_epi64(P1 as i64);
 
@@ -181,6 +189,10 @@ pub mod simd {
         /// The caller must ensure the CPU supports the `avx512f,avx512dq` target feature.
         #[target_feature(enable = "avx512f,avx512dq")]
         pub unsafe fn nextf(&mut self) -> [f64; 8] {
+            assert!(
+                std::arch::is_x86_feature_detected!("avx512f"),
+                "Cet64x8 requires avx512f"
+            );
             let u = unsafe { self.nextu() };
             let mut out = [0f64; 8];
             for i in 0..8 {
@@ -195,13 +207,7 @@ pub mod simd {
         /// The caller must ensure the CPU supports the `avx512f,avx512dq` target feature.
         #[target_feature(enable = "avx512f,avx512dq")]
         pub unsafe fn randi(&mut self, min: i64, max: i64) -> [i64; 8] {
-            let u = unsafe { self.nextu() };
-            let range = (max as i128 - min as i128 + 1) as u128;
-            let mut out = [0i64; 8];
-            for i in 0..8 {
-                out[i] = ((u[i] as u128 * range) >> 64) as i64 + min;
-            }
-            out
+            crate::_internal::sample_randi_block(|| unsafe { self.nextu() }, min, max)
         }
 
         ///
@@ -210,13 +216,7 @@ pub mod simd {
         /// The caller must ensure the CPU supports the `avx512f,avx512dq` target feature.
         #[target_feature(enable = "avx512f,avx512dq")]
         pub unsafe fn randf(&mut self, min: f64, max: f64) -> [f64; 8] {
-            let u = unsafe { self.nextu() };
-            let range = max - min;
-            let mut out = [0f64; 8];
-            for i in 0..8 {
-                out[i] = u2f_01!(f64, 64, u[i]) * range + min;
-            }
-            out
+            unsafe { self.nextu() }.map(|word| crate::Word::to_randf(word, min, max))
         }
     }
 
@@ -226,13 +226,17 @@ pub mod simd {
     #[cfg(target_arch = "x86_64")]
     #[repr(C, align(64))]
     pub struct Cet256x2 {
-        s: __m512i,
+        pub(crate) s: __m512i,
     }
 
     #[cfg(target_arch = "x86_64")]
     impl Cet256x2 {
         /// Creates a new `Cet256x2` from 2 independent seeds.
         pub fn new(seed: u64) -> Self {
+            assert!(
+                std::arch::is_x86_feature_detected!("avx512f"),
+                "Cet256x2 requires avx512f"
+            );
             let mut seedgen = SplitMix64::new(seed);
             let mut s = [0u64; 8];
             for lane in &mut s {
@@ -253,6 +257,10 @@ pub mod simd {
         #[target_feature(enable = "avx512f,avx512dq")]
         #[allow(unsafe_op_in_unsafe_fn)]
         pub unsafe fn nextu(&mut self) -> [u64; 2] {
+            assert!(
+                std::arch::is_x86_feature_detected!("avx512f"),
+                "Cet256x2 requires avx512f"
+            );
             let mut state = [0u64; 8];
             _mm512_storeu_si512(state.as_mut_ptr() as *mut __m512i, self.s);
 
@@ -291,6 +299,10 @@ pub mod simd {
         /// The caller must ensure the CPU supports the `avx512f,avx512dq` target feature.
         #[target_feature(enable = "avx512f,avx512dq")]
         pub unsafe fn nextf(&mut self) -> [f64; 2] {
+            assert!(
+                std::arch::is_x86_feature_detected!("avx512f"),
+                "Cet256x2 requires avx512f"
+            );
             let u = unsafe { self.nextu() };
             [u2f_01!(f64, 64, u[0]), u2f_01!(f64, 64, u[1])]
         }
@@ -301,12 +313,7 @@ pub mod simd {
         /// The caller must ensure the CPU supports the `avx512f,avx512dq` target feature.
         #[target_feature(enable = "avx512f,avx512dq")]
         pub unsafe fn randi(&mut self, min: i64, max: i64) -> [i64; 2] {
-            let u = unsafe { self.nextu() };
-            let range = (max as i128 - min as i128 + 1) as u128;
-            [
-                ((u[0] as u128 * range) >> 64) as i64 + min,
-                ((u[1] as u128 * range) >> 64) as i64 + min,
-            ]
+            crate::_internal::sample_randi_block(|| unsafe { self.nextu() }, min, max)
         }
 
         ///
@@ -315,12 +322,7 @@ pub mod simd {
         /// The caller must ensure the CPU supports the `avx512f,avx512dq` target feature.
         #[target_feature(enable = "avx512f,avx512dq")]
         pub unsafe fn randf(&mut self, min: f64, max: f64) -> [f64; 2] {
-            let u = unsafe { self.nextu() };
-            let range = max - min;
-            [
-                u2f_01!(f64, 64, u[0]) * range + min,
-                u2f_01!(f64, 64, u[1]) * range + min,
-            ]
+            unsafe { self.nextu() }.map(|word| crate::Word::to_randf(word, min, max))
         }
     }
 }
@@ -340,6 +342,7 @@ mod tests {
         target_feature = "avx512dq"
     ))]
     crate::unsafe_test! {
+        array;
         Cet64x8,
         Cet256x2
     }

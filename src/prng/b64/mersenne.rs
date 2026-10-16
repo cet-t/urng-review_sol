@@ -71,8 +71,8 @@ fn sfmt_recursion(
 #[repr(C, align(64))]
 #[derive(Debug, Clone, Copy)]
 pub struct Mt1993764 {
-    mt: [wu64; N],
-    mti: wusize,
+    pub(crate) mt: [wu64; N],
+    pub(crate) mti: wusize,
 }
 
 const N: usize = 312;
@@ -181,8 +181,8 @@ impl Rng for Mt1993764 {
 #[repr(C, align(64))]
 #[derive(Debug, Clone, Copy)]
 pub struct Sfmt1993764 {
-    state: [u32x4; SFMT_N],
-    idx: wusize,
+    pub(crate) state: [u32x4; SFMT_N],
+    pub(crate) idx: wusize,
 }
 
 const SFMT_N: usize = 156;

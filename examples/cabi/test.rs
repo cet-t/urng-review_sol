@@ -272,116 +272,118 @@ macro_rules! bench64_l3 {
 }
 
 fn main() {
-    println!(
-        "Benchmarking RNGs (N={}, best of {} runs, warmed buffer)",
-        N.separate_with_commas().bright_cyan().bold(),
-        RUNS.to_string().bright_yellow(),
-    );
-    println!("{}", "─".repeat(72).bright_black());
+    unsafe {
+        println!(
+            "Benchmarking RNGs (N={}, best of {} runs, warmed buffer)",
+            N.separate_with_commas().bright_cyan().bold(),
+            RUNS.to_string().bright_yellow(),
+        );
+        println!("{}", "─".repeat(72).bright_black());
 
-    // --- 32-bit ---
-    // Allocate once and touch every page to eliminate page-fault overhead.
-    let mut buf32 = vec![0u32; N];
-    // Warm: write to every cache line so pages are mapped before measurement.
-    {
-        let ptr = jsf32x16_new(0);
-        jsf32x16_next_u32s(ptr, buf32.as_mut_ptr(), N);
-        jsf32x16_free(ptr);
+        // --- 32-bit ---
+        // Allocate once and touch every page to eliminate page-fault overhead.
+        let mut buf32 = vec![0u32; N];
+        // Warm: write to every cache line so pages are mapped before measurement.
+        {
+            let ptr = jsf32x16_new(0);
+            jsf32x16_next_u32s(ptr, buf32.as_mut_ptr(), N);
+            jsf32x16_free(ptr);
+        }
+
+        let ceiling_gbps = measure_write_ceiling(&mut buf32);
+        println!(
+            "NT-store write ceiling: {} GB/s (= {:.2} GS/s u32, {:.2} GS/s u64)",
+            format!("{:.1}", ceiling_gbps).bright_magenta().bold(),
+            ceiling_gbps / 4.0,
+            ceiling_gbps / 8.0,
+        );
+        println!("{}", "─".repeat(72).bright_black());
+
+        let mut r32 = Vec::new();
+        bench32!(buf32, r32, philox32x4x4, philox32);
+        bench32!(buf32, r32, threefry32x4, threefry32x2);
+        bench32!(buf32, r32, squares32, squares32x8);
+        bench32!(buf32, r32, pcg32, pcg32x8);
+        bench32!(buf32, r32, splitmix32, splitmix32x16);
+        bench32!(buf32, r32, mt19937, sfmt19937);
+        bench32!(
+            buf32, r32, sfmt607, sfmt1279, sfmt2281, sfmt4253, sfmt11213, sfmt44497, sfmt86243,
+            sfmt132049, sfmt216091
+        );
+        bench32!(
+            buf32,
+            r32,
+            xoshiro128pp,
+            xoshiro128ss,
+            xoshiro128ppx16,
+            xoshiro128ssx16
+        );
+        bench32!(buf32, r32, xoroshiro64ss, xoroshiro64ssx8, xoroshiro64ssx16);
+        bench32!(buf32, r32, jsf32, jsf32x16);
+        bench32!(buf32, r32, sfc32, sfc32x4, sfc32x8, sfc32x16);
+        print_group(&r32, 4, ceiling_gbps);
+
+        println!("{}", "─".repeat(72).bright_black());
+
+        // --- 64-bit ---
+        let mut buf64 = vec![0u64; N];
+        {
+            use urng::cabi::splitmix64_next_u64s;
+            let ptr = splitmix64_new(0);
+            splitmix64_next_u64s(ptr, buf64.as_mut_ptr(), N);
+            splitmix64_free(ptr);
+        }
+
+        let mut r64 = Vec::new();
+        bench64!(buf64, r64, philox64);
+        bench64!(buf64, r64, splitmix64);
+        bench64!(buf64, r64, cet64, cet64x8, cet256, cet256x2);
+        bench64!(buf64, r64, mt1993764, sfmt1993764);
+        bench64!(buf64, r64, threefish256);
+        bench64!(buf64, r64, xoshiro256pp, xoshiro256ss, xoshiro256ssx2);
+        bench64!(buf64, r64, xoroshiro128pp, xoroshiro128ss);
+        bench64!(buf64, r64, sfc64, sfc64x8);
+        bench64!(buf64, r64, biski64, biski64x8);
+        print_group(&r64, 8, ceiling_gbps);
+
+        println!("{}", "─".repeat(72).bright_black());
+        println!(
+            "L3-resident mode (16 MB working set x {} loops = same totals)",
+            L3_LOOPS_32.to_string().bright_yellow(),
+        );
+        println!("{}", "─".repeat(72).bright_black());
+
+        let mut r32_l3 = Vec::new();
+        bench32_l3!(
+            buf32,
+            r32_l3,
+            philox32x4x4,
+            threefry32x4,
+            squares32x8,
+            pcg32x8,
+            splitmix32x16,
+            xoshiro128ppx16,
+            xoroshiro64ss,
+            xoroshiro64ssx16,
+            jsf32x16,
+            sfc32x8,
+        );
+        print_group(&r32_l3, 4, ceiling_gbps);
+
+        println!("{}", "─".repeat(72).bright_black());
+
+        let mut r64_l3 = Vec::new();
+        bench64_l3!(
+            buf64,
+            r64_l3,
+            philox64,
+            splitmix64,
+            xoroshiro128pp,
+            xoshiro256ssx2,
+            cet64x8,
+            sfc64x8,
+            biski64x8,
+        );
+        print_group(&r64_l3, 8, ceiling_gbps);
     }
-
-    let ceiling_gbps = measure_write_ceiling(&mut buf32);
-    println!(
-        "NT-store write ceiling: {} GB/s (= {:.2} GS/s u32, {:.2} GS/s u64)",
-        format!("{:.1}", ceiling_gbps).bright_magenta().bold(),
-        ceiling_gbps / 4.0,
-        ceiling_gbps / 8.0,
-    );
-    println!("{}", "─".repeat(72).bright_black());
-
-    let mut r32 = Vec::new();
-    bench32!(buf32, r32, philox32x4x4, philox32);
-    bench32!(buf32, r32, threefry32x4, threefry32x2);
-    bench32!(buf32, r32, squares32, squares32x8);
-    bench32!(buf32, r32, pcg32, pcg32x8);
-    bench32!(buf32, r32, splitmix32, splitmix32x16);
-    bench32!(buf32, r32, mt19937, sfmt19937);
-    bench32!(
-        buf32, r32, sfmt607, sfmt1279, sfmt2281, sfmt4253, sfmt11213, sfmt44497, sfmt86243,
-        sfmt132049, sfmt216091
-    );
-    bench32!(
-        buf32,
-        r32,
-        xoshiro128pp,
-        xoshiro128ss,
-        xoshiro128ppx16,
-        xoshiro128ssx16
-    );
-    bench32!(buf32, r32, xoroshiro64ss, xoroshiro64ssx8, xoroshiro64ssx16);
-    bench32!(buf32, r32, jsf32, jsf32x16);
-    bench32!(buf32, r32, sfc32, sfc32x4, sfc32x8, sfc32x16);
-    print_group(&r32, 4, ceiling_gbps);
-
-    println!("{}", "─".repeat(72).bright_black());
-
-    // --- 64-bit ---
-    let mut buf64 = vec![0u64; N];
-    {
-        use urng::cabi::splitmix64_next_u64s;
-        let ptr = splitmix64_new(0);
-        splitmix64_next_u64s(ptr, buf64.as_mut_ptr(), N);
-        splitmix64_free(ptr);
-    }
-
-    let mut r64 = Vec::new();
-    bench64!(buf64, r64, philox64);
-    bench64!(buf64, r64, splitmix64);
-    bench64!(buf64, r64, cet64, cet64x8, cet256, cet256x2);
-    bench64!(buf64, r64, mt1993764, sfmt1993764);
-    bench64!(buf64, r64, threefish256);
-    bench64!(buf64, r64, xoshiro256pp, xoshiro256ss, xoshiro256ssx2);
-    bench64!(buf64, r64, xoroshiro128pp, xoroshiro128ss);
-    bench64!(buf64, r64, sfc64, sfc64x8);
-    bench64!(buf64, r64, biski64, biski64x8);
-    print_group(&r64, 8, ceiling_gbps);
-
-    println!("{}", "─".repeat(72).bright_black());
-    println!(
-        "L3-resident mode (16 MB working set x {} loops = same totals)",
-        L3_LOOPS_32.to_string().bright_yellow(),
-    );
-    println!("{}", "─".repeat(72).bright_black());
-
-    let mut r32_l3 = Vec::new();
-    bench32_l3!(
-        buf32,
-        r32_l3,
-        philox32x4x4,
-        threefry32x4,
-        squares32x8,
-        pcg32x8,
-        splitmix32x16,
-        xoshiro128ppx16,
-        xoroshiro64ss,
-        xoroshiro64ssx16,
-        jsf32x16,
-        sfc32x8,
-    );
-    print_group(&r32_l3, 4, ceiling_gbps);
-
-    println!("{}", "─".repeat(72).bright_black());
-
-    let mut r64_l3 = Vec::new();
-    bench64_l3!(
-        buf64,
-        r64_l3,
-        philox64,
-        splitmix64,
-        xoroshiro128pp,
-        xoshiro256ssx2,
-        cet64x8,
-        sfc64x8,
-        biski64x8,
-    );
-    print_group(&r64_l3, 8, ceiling_gbps);
 }

@@ -37,7 +37,7 @@ impl<'a, T> Iterator for ShuffledIterator<'a, T> {
     }
 }
 
-use crate::rng::{Rng, Word};
+use crate::rng::Rng;
 
 /// Shuffles a slice in-place or returns a shuffled iterator, for any [`Rng`].
 pub trait Shuffle: Rng {
@@ -49,7 +49,7 @@ pub trait Shuffle: Rng {
         } else {
             let len = src.len();
             (0..len - 1).for_each(|i| {
-                let j = self.nextu().to_index(len);
+                let j = i + self.index(len - i);
                 src.swap(i, j);
             });
             Ok(())
@@ -68,7 +68,7 @@ pub trait Shuffle: Rng {
         let len = src.len();
         let mut indices: Vec<usize> = (0..len).collect();
         (0..len - 1).for_each(|i| {
-            let j = self.nextu().to_index(len);
+            let j = i + self.index(len - i);
             indices.swap(i, j);
         });
         Ok(crate::ShuffledIterator {

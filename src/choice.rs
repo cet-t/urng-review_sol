@@ -1,18 +1,18 @@
-use crate::rng::{Rng, Word};
+use crate::rng::Rng;
 
 /// Random element selection from a slice, for any [`Rng`].
 pub trait Choice: Rng {
     /// Returns a random element from a slice.
     #[inline(always)]
     fn choice<'a, T>(&mut self, choices: &'a [T]) -> &'a T {
-        let index = self.nextu().to_index(choices.len());
+        let index = self.index(choices.len());
         &choices[index]
     }
 
     /// Returns a random mutable element from a slice.
     #[inline(always)]
     fn choice_mut<'a, T>(&mut self, choices: &'a mut [T]) -> &'a mut T {
-        let index = self.nextu().to_index(choices.len());
+        let index = self.index(choices.len());
         &mut choices[index]
     }
 }

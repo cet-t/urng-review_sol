@@ -18,8 +18,8 @@ use crate::{Rng, SplitMix32};
 #[repr(C, align(64))]
 #[derive(Debug, Clone, Copy)]
 pub struct Xorwow {
-    x: [wu32; 5],
-    c: wu32,
+    pub(crate) x: [wu32; 5],
+    pub(crate) c: wu32,
 }
 
 impl Xorwow {

@@ -79,6 +79,7 @@ fn measure_wide<F: FnMut(*mut u32)>(buf: &mut [u32], size: usize, mut f: F) -> f
             p = p.wrapping_add(size);
             written += size;
         }
+        std::hint::black_box(&*buf);
         let elapsed = meter.end(start);
         let t = n as f64 / (meter.to_f64(&elapsed) / 1e9) / G;
         if t > best {

@@ -71,8 +71,8 @@ fn sfmt_recursion(
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct Mt19937 {
-    mt: [wu32; MT32_N],
-    mti: wusize,
+    pub(crate) mt: [wu32; MT32_N],
+    pub(crate) mti: wusize,
 }
 
 const MT32_N: usize = 624;
@@ -184,8 +184,8 @@ impl Rng for Mt19937 {
 /// ```
 #[repr(C, align(16))]
 pub struct Sfmt19937 {
-    state: [u32x4; SFMT_N],
-    idx: wusize,
+    pub(crate) state: [u32x4; SFMT_N],
+    pub(crate) idx: wusize,
 }
 
 const SFMT_N: usize = 156;
@@ -386,8 +386,8 @@ macro_rules! define_sfmt_variant {
             #[repr(C)]
             #[repr(align(16))]
             pub struct [<Sfmt $mexp>] {
-                state: [u32x4; $n],
-                idx: ::wrapn::wusize,
+                pub(crate) state: [u32x4; $n],
+                pub(crate) idx: ::wrapn::wusize,
             }
 
             impl [<Sfmt $mexp>] {

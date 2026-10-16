@@ -22,8 +22,8 @@ macro_rules! impl_pcg32_variants {
             #[allow(dead_code)]
             #[repr(C, align(64))]
             pub struct [<Pcg32x $size>] {
-                state: [<u64x $lanes>],
-                inc: [<u64x $lanes>],
+                pub(crate) state: [<u64x $lanes>],
+                pub(crate) inc: [<u64x $lanes>],
             }
 
             #[allow(dead_code)]
@@ -33,7 +33,7 @@ macro_rules! impl_pcg32_variants {
                     let mut seedgen = SplitMix64::new(seed | 1);
                     Self {
                         state: [<u64x $lanes>]::from([0u64; $lanes].map(|_| seedgen.nextu())),
-                        inc: [<u64x $lanes>]::from([0u64; $lanes].map(|_| seedgen.nextu())),
+                        inc: [<u64x $lanes>]::from([0u64; $lanes].map(|_| seedgen.nextu() | 1)),
                     }
                 }
 
@@ -82,8 +82,8 @@ impl_pcg32_variants!(8, 8);
 #[allow(dead_code)]
 #[repr(C, align(64))]
 pub struct Pcg32x16 {
-    lo: Pcg32x8,
-    hi: Pcg32x8,
+    pub(crate) lo: Pcg32x8,
+    pub(crate) hi: Pcg32x8,
 }
 
 #[allow(dead_code)]

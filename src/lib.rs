@@ -1,12 +1,12 @@
-#![cfg_attr(not(doctest), doc = include_str!("../Readme.md"))]
+#![doc = include_str!("../README.md")]
 #![allow(ambiguous_glob_reexports)]
 
 mod rng;
 pub use crate::rng::*;
 
-#[cfg(feature = "simd")]
+#[cfg(all(feature = "simd", target_arch = "x86_64"))]
 mod rngv;
-#[cfg(feature = "simd")]
+#[cfg(all(feature = "simd", target_arch = "x86_64"))]
 pub use crate::rngv::*;
 
 mod prng;
@@ -50,3 +50,9 @@ pub use crate::seedgen::*;
 
 #[macro_use]
 mod macros;
+
+#[cfg(test)]
+mod core_regression;
+
+#[cfg(all(test, any(feature = "simd", feature = "wide")))]
+mod simd_regression;

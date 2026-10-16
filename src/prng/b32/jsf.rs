@@ -47,10 +47,10 @@ impl Rng for Jsf32 {
     }
 }
 
-#[cfg(feature = "simd")]
+#[cfg(all(feature = "simd", target_arch = "x86_64"))]
 pub use simd::*;
 
-#[cfg(feature = "simd")]
+#[cfg(all(feature = "simd", target_arch = "x86_64"))]
 pub mod simd {
     #[cfg(target_arch = "x86_64")]
     use std::arch::x86_64::*;
@@ -81,6 +81,10 @@ pub mod simd {
         /// # Safety
         #[target_feature(enable = "avx2")]
         pub fn new(seed: u32) -> Self {
+            assert!(
+                std::arch::is_x86_feature_detected!("avx2"),
+                "Jsf32x8 requires avx2"
+            );
             let mut seedgen = SplitMix32::new(seed);
             let mut sv = [[0u32; JSF32X8]; 3];
             for vals in sv.iter_mut() {
@@ -104,9 +108,19 @@ pub mod simd {
 
         #[inline]
         fn nextuv(&mut self) -> __m256i {
+            assert!(
+                std::arch::is_x86_feature_detected!("avx2"),
+                "Jsf32x8 requires avx2"
+            );
             unsafe {
-                let e = _mm256_sub_epi32(self.a, _mm256_rol_epi32(self.b, 27));
-                self.a = _mm256_xor_si256(self.b, _mm256_rol_epi32(self.c, 17));
+                let e = _mm256_sub_epi32(
+                    self.a,
+                    _mm256_or_si256(_mm256_slli_epi32(self.b, 27), _mm256_srli_epi32(self.b, 5)),
+                );
+                self.a = _mm256_xor_si256(
+                    self.b,
+                    _mm256_or_si256(_mm256_slli_epi32(self.c, 17), _mm256_srli_epi32(self.c, 15)),
+                );
                 self.b = _mm256_add_epi32(self.c, self.d);
                 self.c = _mm256_add_epi32(self.d, e);
                 self.d = _mm256_add_epi32(e, self.a);
@@ -141,6 +155,10 @@ pub mod simd {
         /// # Safety
         #[target_feature(enable = "avx512f")]
         pub fn new(seed: u32) -> Self {
+            assert!(
+                std::arch::is_x86_feature_detected!("avx512f"),
+                "Jsf32x16 requires avx512f"
+            );
             let mut seedgen = SplitMix32::new(seed);
             let mut sv = [[0u32; JSF32X16]; 3];
             for vals in sv.iter_mut() {
@@ -164,6 +182,10 @@ pub mod simd {
         type Word = __m512i;
 
         fn nextuv(&mut self) -> __m512i {
+            assert!(
+                std::arch::is_x86_feature_detected!("avx512f"),
+                "Jsf32x16 requires avx512f"
+            );
             unsafe {
                 let e = _mm512_sub_epi32(self.a, _mm512_rol_epi32(self.b, 27));
                 self.a = _mm512_xor_si512(self.b, _mm512_rol_epi32(self.c, 17));

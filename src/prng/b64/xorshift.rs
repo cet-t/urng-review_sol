@@ -17,7 +17,7 @@ use crate::rng::Rng;
 #[repr(C, align(64))]
 #[derive(Debug, Clone, Copy)]
 pub struct Xorshift64 {
-    a: wu64,
+    pub(crate) a: wu64,
 }
 
 impl Xorshift64 {
@@ -25,7 +25,10 @@ impl Xorshift64 {
     pub const fn new(seed: u64) -> Self {
         let mut seedgen = SplitMix64::new(seed);
         Self {
-            a: wrap!(seedgen.nextu_const()),
+            a: wrap!({
+                let state = seedgen.nextu_const();
+                if state == 0 { 1 } else { state }
+            }),
         }
     }
 }

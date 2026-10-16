@@ -48,10 +48,10 @@ impl Rng for Sfc32 {
     }
 }
 
-#[cfg(feature = "simd")]
+#[cfg(all(feature = "simd", target_arch = "x86_64"))]
 pub use simd::*;
 
-#[cfg(feature = "simd")]
+#[cfg(all(feature = "simd", target_arch = "x86_64"))]
 pub mod simd {
     use std::arch::x86_64::*;
 
@@ -181,6 +181,10 @@ pub mod simd {
         /// The caller must ensure the CPU supports the `avx2` target feature.
         #[target_feature(enable = "avx2")]
         pub fn new(seed: u32) -> Self {
+            assert!(
+                std::arch::is_x86_feature_detected!("avx2"),
+                "Sfc32x8 requires avx2"
+            );
             let mut seedgen = SplitMix32::new(seed);
             let mut a = [0u32; SFC32X8];
             let mut b = [0u32; SFC32X8];
@@ -203,11 +207,18 @@ pub mod simd {
         #[inline]
         #[target_feature(enable = "avx2")]
         pub(crate) unsafe fn nextuv(&mut self) -> __m256i {
+            assert!(
+                std::arch::is_x86_feature_detected!("avx2"),
+                "Sfc32x8 requires avx2"
+            );
             let tmp = _mm256_add_epi32(_mm256_add_epi32(self.a, self.b), self.counter);
             self.counter = _mm256_add_epi32(self.counter, _mm256_set1_epi32(1));
             self.a = _mm256_xor_si256(self.b, _mm256_srli_epi32(self.b, 9));
             self.b = _mm256_add_epi32(self.c, _mm256_slli_epi32(self.c, 3));
-            self.c = _mm256_add_epi32(unsafe { _mm256_rol_epi32(self.c, 21) }, tmp);
+            self.c = _mm256_add_epi32(
+                _mm256_or_si256(_mm256_slli_epi32(self.c, 21), _mm256_srli_epi32(self.c, 11)),
+                tmp,
+            );
             tmp
         }
 
@@ -224,7 +235,7 @@ pub mod simd {
             let v_u32 = unsafe { self.nextuv() };
             let res_even = _mm256_srli_epi64(_mm256_mul_epu32(v_u32, v_range), 32);
             let prod_odd = _mm256_mul_epu32(_mm256_srli_epi64(v_u32, 32), v_range);
-            let merged = unsafe { _mm256_mask_blend_epi32(MERGE_MASK, res_even, prod_odd) };
+            let merged = _mm256_blend_epi32::<0xAA>(res_even, prod_odd);
             _mm256_add_epi32(merged, v_min)
         }
 
@@ -237,11 +248,19 @@ pub mod simd {
 
         #[inline(always)]
         pub fn nextu(&mut self) -> [u32; SFC32X8] {
+            assert!(
+                std::arch::is_x86_feature_detected!("avx2"),
+                "Sfc32x8 requires avx2"
+            );
             unsafe { std::mem::transmute(self.nextuv()) }
         }
 
         #[inline(always)]
         pub fn nextf(&mut self) -> [f32; SFC32X8] {
+            assert!(
+                std::arch::is_x86_feature_detected!("avx2"),
+                "Sfc32x8 requires avx2"
+            );
             self.nextu().map(|x| u2f_01!(f32, 32, x))
         }
     }
@@ -272,6 +291,10 @@ pub mod simd {
         /// The caller must ensure the CPU supports the `avx512f` target feature.
         #[target_feature(enable = "avx512f")]
         pub fn new(seed: u32) -> Self {
+            assert!(
+                std::arch::is_x86_feature_detected!("avx512f"),
+                "Sfc32x16 requires avx512f"
+            );
             let mut seedgen = SplitMix32::new(seed);
             let mut a = [0u32; SFC32X16];
             let mut b = [0u32; SFC32X16];
@@ -294,6 +317,10 @@ pub mod simd {
         #[inline]
         #[target_feature(enable = "avx512f")]
         pub(crate) unsafe fn nextuv(&mut self) -> __m512i {
+            assert!(
+                std::arch::is_x86_feature_detected!("avx512f"),
+                "Sfc32x16 requires avx512f"
+            );
             let tmp = _mm512_add_epi32(_mm512_add_epi32(self.a, self.b), self.counter);
             self.counter = _mm512_add_epi32(self.counter, _mm512_set1_epi32(1));
             self.a = _mm512_xor_si512(self.b, _mm512_srli_epi32(self.b, 9));
@@ -330,10 +357,18 @@ pub mod simd {
 
         #[inline(always)]
         pub fn nextu(&mut self) -> [u32; SFC32X16] {
+            assert!(
+                std::arch::is_x86_feature_detected!("avx512f"),
+                "Sfc32x16 requires avx512f"
+            );
             unsafe { std::mem::transmute(self.nextuv()) }
         }
 
         pub fn nextf(&mut self) -> [f32; SFC32X16] {
+            assert!(
+                std::arch::is_x86_feature_detected!("avx512f"),
+                "Sfc32x16 requires avx512f"
+            );
             self.nextu().map(|x| u2f_01!(f32, 32, x))
         }
     }
@@ -341,22 +376,24 @@ pub mod simd {
 
 #[cfg(test)]
 mod tests {
-    #[cfg(feature = "simd")]
+    #[cfg(all(feature = "simd", target_arch = "x86_64"))]
     use std::arch::x86_64::*;
 
     use super::*;
-    #[cfg(feature = "simd")]
 
     crate::safe_test! { Sfc32 }
-    #[cfg(feature = "simd")]
+    #[cfg(all(feature = "simd", target_arch = "x86_64"))]
     crate::safe_test! { Sfc32x4 }
-    #[cfg(feature = "simd")]
+    #[cfg(all(feature = "simd", target_arch = "x86_64"))]
     crate::unsafe_test! {
-        Sfc32x8,
-        Sfc32x16
+        requires "avx2"; Sfc32x8
+    }
+    #[cfg(all(feature = "simd", target_arch = "x86_64"))]
+    crate::unsafe_test! {
+        requires "avx512f"; Sfc32x16
     }
 
-    #[cfg(feature = "simd")]
+    #[cfg(all(feature = "simd", target_arch = "x86_64"))]
     fn scalar_lanes(seed: u32) -> [Sfc32; SFC32X4] {
         let mut seedgen = SplitMix32::new(seed);
         std::array::from_fn(|_| Sfc32 {
@@ -367,7 +404,7 @@ mod tests {
         })
     }
 
-    #[cfg(feature = "simd")]
+    #[cfg(all(feature = "simd", target_arch = "x86_64"))]
     #[test]
     fn sfc32x4_lanes_match_scalar() {
         let mut vector = Sfc32x4::new(0);
@@ -380,7 +417,7 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "simd")]
+    #[cfg(all(feature = "simd", target_arch = "x86_64"))]
     #[test]
     fn sfc32x4_randiv_randfv_match_scalar() {
         let (min_i, max_i) = (-5i32, 7i32);

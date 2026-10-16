@@ -21,7 +21,8 @@ pub struct Bst64<'a, R: Rng<Word = u64> + 'a> {
 }
 
 impl<'a, R: Rng<Word = u64> + 'a> Bst64<'a, R> {
-    /// Creates a new sampler with the given random number generator and weights.
+    /// Creates a sampler from finite, nonnegative weights with positive total.
+    /// Panics for an empty slice, negative/nonfinite weights, or all-zero weights.
     pub fn new(rng: &'a mut R, weights: &[f64]) -> Self {
         Self {
             rng,
@@ -30,10 +31,16 @@ impl<'a, R: Rng<Word = u64> + 'a> Bst64<'a, R> {
     }
 
     fn build_cumulative(weights: &[f64]) -> Vec<f64> {
+        assert!(
+            !weights.is_empty() && weights.iter().all(|w| w.is_finite() && *w >= 0.0),
+            "invalid weights"
+        );
+        let maximum = weights.iter().copied().fold(0.0f64, f64::max);
+        assert!(maximum > 0.0, "all weights are zero");
         let mut cumulative = Vec::with_capacity(weights.len());
-        let mut sum = 0.0;
+        let mut sum = 0.0f64;
         for &w in weights {
-            sum += w;
+            sum += w / maximum;
             cumulative.push(sum);
         }
         cumulative
@@ -48,12 +55,9 @@ impl<'a, R: Rng<Word = u64> + 'a> Sampler<'a, R> for Bst64<'a, R> {
     fn sample(&mut self) -> usize {
         let total = *self.cumulative.last().unwrap_or(&0.0);
         let r = self.rng.randf(0.0, total);
-        match self
-            .cumulative
-            .binary_search_by(|&c| c.partial_cmp(&r).unwrap())
-        {
-            Ok(i) | Err(i) => i.min(self.cumulative.len() - 1),
-        }
+        // A boundary belongs to the following nonempty interval. In
+        // particular, leading zero-weight entries must never be selected.
+        self.cumulative.partition_point(|&c| c <= r)
     }
 }
 

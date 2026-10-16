@@ -52,12 +52,12 @@ const THREEFISH_R_256: [[u32; 2]; 8] = [
 #[repr(C, align(64))]
 #[derive(Debug, Clone, Copy)]
 pub struct Threefish256 {
-    c: [wu64; 4],
-    k: [wu64; 5],
-    tw: [wu64; 3],
-    index: wusize,
-    buf: [wu64; 4],
-    pos: wusize,
+    pub(crate) c: [wu64; 4],
+    pub(crate) k: [wu64; 5],
+    pub(crate) tw: [wu64; 3],
+    pub(crate) index: wusize,
+    pub(crate) buf: [wu64; 4],
+    pub(crate) pos: wusize,
 }
 
 impl Threefish256 {
@@ -80,7 +80,7 @@ impl Threefish256 {
             tw: [tw0, tw1, tw0 ^ tw1],
             index: wrap!(4),
             buf: wrap![0; 4],
-            pos: wrap!(0),
+            pos: wrap!(4),
         }
     }
 
@@ -133,12 +133,7 @@ impl Threefish256 {
         }
 
         let ksi = Self::key_schedule(&self.k, &self.tw, THREE_FISH_N_ROUNDS.div_ceil(4));
-        let dst = [
-            (v[0] + ksi[0]) ^ self.c[0],
-            (v[1] + ksi[1]) ^ self.c[1],
-            (v[2] + ksi[2]) ^ self.c[2],
-            (v[3] + ksi[3]) ^ self.c[3],
-        ];
+        let dst = [v[0] + ksi[0], v[1] + ksi[1], v[2] + ksi[2], v[3] + ksi[3]];
 
         self.c[0] += 1;
         if self.c[0] == 0 {

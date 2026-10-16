@@ -22,7 +22,7 @@ macro_rules! impl_variants {
             #[allow(dead_code)]
             #[repr(C, align(64))]
             pub struct [<SplitMix32x $size>] {
-                state: [<u32x $size>],
+                pub(crate) state: [<u32x $size>],
             }
 
             #[allow(dead_code)]
@@ -30,7 +30,7 @@ macro_rules! impl_variants {
                 #[doc = "Creates a new generator, seeding every lane from `seed | 1` and advancing by the golden ratio."]
                 pub fn new(seed: u32) -> Self {
                     let mut state = [0u32; $size];
-                    state.iter_mut().fold(seed | 1, |s, x| {
+                    state.iter_mut().fold((seed | 1).wrapping_sub((($size - 1) as u32).wrapping_mul(0x9E3779B9)), |s, x| {
                         *x = s;
                         s.wrapping_add(0x9E3779B9)
                     });
@@ -42,10 +42,8 @@ macro_rules! impl_variants {
 
                 #[inline(always)]
                 pub(crate) fn compute(state: [<u32x $size>]) -> [<u32x $size>] {
-                    let mut z = state;
-                    z = (z ^ (z >> 16)) * [<u32x $size>]::splat(0x85EBCA6B);
-                    z = (z ^ (z >> 13)) * [<u32x $size>]::splat(0xC2B2AE35);
-                    z ^ (z >> 16)
+                    // Match the scalar's 64-bit intermediate finalizer exactly.
+                    [<u32x $size>]::from(state.to_array().map(crate::SplitMix32::compute))
                 }
             }
 
@@ -57,7 +55,7 @@ macro_rules! impl_variants {
                 #[doc = "Advances the shared counter by `0x9E3779B9` and applies the two-multiply finalizer."]
                 #[inline(always)]
                 fn nextu(&mut self) -> [Self::Word; $size] {
-                    self.state += [<u32x $size>]::splat(0x9E3779B9);
+                    self.state += [<u32x $size>]::splat(0x9E3779B9u32.wrapping_mul($size as u32));
                     let z = Self::compute(self.state);
                     bytemuck::cast(z)
                 }

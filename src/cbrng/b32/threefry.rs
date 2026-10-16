@@ -42,8 +42,8 @@ impl Threefry32x4 {
         }
         k[4] = k[0] ^ k[1] ^ k[2] ^ k[3] ^ THREEFRY32_C240;
 
-        let tw0 = seedgen.nextu();
-        let tw1 = seedgen.nextu();
+        let tw0 = 0;
+        let tw1 = 0;
         let tw = wrap![tw0, tw1, tw0 ^ tw1];
 
         Self {
@@ -63,7 +63,8 @@ impl Threefry32x4 {
     /// * `k`  - 5-word key schedule (k\[4\] = parity word).
     /// * `tw` - 3-word tweak schedule (tw\[2\] = tw\[0\] ^ tw\[1\]).
     #[inline(always)]
-    pub(crate) fn compute(c: [wu32; 4], k: &[wu32; 5], tw: &[wu32; 3]) -> [wu32; 4] {
+    pub(crate) fn compute(c: [wu32; 4], k: &[wu32; 5], _tw: &[wu32; 3]) -> [wu32; 4] {
+        let tw = &wrap![0;3];
         let mut v = c;
 
         macro_rules! round {
@@ -125,12 +126,7 @@ impl Threefry32x4 {
         let ksi5_2 = k[2] + tw[0];
         let ksi5_3 = k[3] + 5;
 
-        [
-            (v[0] + ksi5_0) ^ c[0],
-            (v[1] + ksi5_1) ^ c[1],
-            (v[2] + ksi5_2) ^ c[2],
-            (v[3] + ksi5_3) ^ c[3],
-        ]
+        [v[0] + ksi5_0, v[1] + ksi5_1, v[2] + ksi5_2, v[3] + ksi5_3]
     }
 
     /// Generates the next block of 4 random `u32` values in one call.

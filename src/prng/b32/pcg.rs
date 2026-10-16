@@ -18,8 +18,8 @@ use crate::{_internal::sm64_from_seed32, Rng};
 #[repr(C, align(64))]
 #[derive(Debug, Clone, Copy)]
 pub struct Pcg32 {
-    state: wu64,
-    inc: wu64,
+    pub(crate) state: wu64,
+    pub(crate) inc: wu64,
 }
 
 impl Pcg32 {
@@ -28,7 +28,7 @@ impl Pcg32 {
         let mut seedgen = sm64_from_seed32!(seed);
         Pcg32 {
             state: wrap!(seedgen.nextu_const()),
-            inc: wrap!(seedgen.nextu_const()),
+            inc: wrap!(seedgen.nextu_const() | 1),
         }
     }
 }
@@ -48,10 +48,10 @@ impl Rng for Pcg32 {
 
 // --- Pcg32x8 (AVX-512) ---
 
-#[cfg(feature = "simd")]
+#[cfg(all(feature = "simd", target_arch = "x86_64"))]
 pub use simd::*;
 
-#[cfg(feature = "simd")]
+#[cfg(all(feature = "simd", target_arch = "x86_64"))]
 pub mod simd {
     #[cfg(target_arch = "x86_64")]
     use std::arch::x86_64::*;
@@ -92,13 +92,17 @@ pub mod simd {
         /// Must only be called on a CPU that supports AVX-512F.
         #[target_feature(enable = "avx512f")]
         pub unsafe fn new(seed: u32) -> Self {
+            assert!(
+                std::arch::is_x86_feature_detected!("avx512f"),
+                "Pcg32x8 requires avx512f"
+            );
             let mut seedgen = crate::sm64_from_seed32!(seed);
 
             let mut state = [0u64; PCG32X8_LANE];
             state.iter_mut().for_each(|v| *v = seedgen.nextu_const());
 
             let mut inc = [0u64; PCG32X8_LANE];
-            inc.iter_mut().for_each(|v| *v = seedgen.nextu_const());
+            inc.iter_mut().for_each(|v| *v = seedgen.nextu_const() | 1);
 
             unsafe {
                 Pcg32x8 {
@@ -116,6 +120,10 @@ pub mod simd {
         #[allow(unsafe_op_in_unsafe_fn)]
         #[target_feature(enable = "avx512f")]
         pub unsafe fn nextu(&mut self) -> [u32; PCG32X8_LANE] {
+            assert!(
+                std::arch::is_x86_feature_detected!("avx512f"),
+                "Pcg32x8 requires avx512f"
+            );
             let mult_lo = _mm512_set1_epi64(0x4C957F2D_i64);
             let mult_hi = _mm512_set1_epi64(0x5851F42D_i64);
             let mask32 = _mm512_set1_epi64(0xFFFFFFFF_i64);
@@ -158,6 +166,10 @@ pub mod simd {
 
         #[inline]
         fn nextuv(&mut self) -> Self::Word {
+            assert!(
+                std::arch::is_x86_feature_detected!("avx512f"),
+                "Pcg32x8 requires avx512f"
+            );
             unsafe {
                 let mult_lo = _mm512_set1_epi64(0x4C957F2D_i64);
                 let mult_hi = _mm512_set1_epi64(0x5851F42D_i64);

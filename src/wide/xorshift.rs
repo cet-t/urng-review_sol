@@ -22,7 +22,7 @@ macro_rules! impl_xorshift32_variants {
             #[allow(dead_code)]
             #[repr(C, align(64))]
             pub struct [<Xorshift32x $size>] {
-                a: [<u32x $size>],
+                pub(crate) a: [<u32x $size>],
             }
 
             #[allow(dead_code)]
@@ -31,7 +31,10 @@ macro_rules! impl_xorshift32_variants {
                 pub fn new(seed: u32) -> Self {
                     let mut seedgen = SplitMix32::new(seed);
                     Self {
-                        a: [<u32x $size>]::from([0u32; $size].map(|_| seedgen.nextu())),
+                        a: [<u32x $size>]::from([0u32; $size].map(|_| {
+                            let state = seedgen.nextu();
+                            if state == 0 { 1 } else { state }
+                        })),
                     }
                 }
 
@@ -79,10 +82,10 @@ macro_rules! impl_xorshift128_variants {
             #[allow(dead_code)]
             #[repr(C, align(64))]
             pub struct [<Xorshift128x $size>] {
-                x0: [<u32x $size>],
-                x1: [<u32x $size>],
-                x2: [<u32x $size>],
-                x3: [<u32x $size>],
+                pub(crate) x0: [<u32x $size>],
+                pub(crate) x1: [<u32x $size>],
+                pub(crate) x2: [<u32x $size>],
+                pub(crate) x3: [<u32x $size>],
             }
 
             #[allow(dead_code)]
@@ -146,12 +149,12 @@ macro_rules! impl_xorwow_variants {
             #[allow(dead_code)]
             #[repr(C, align(64))]
             pub struct [<Xorwowx $size>] {
-                x0: [<u32x $size>],
-                x1: [<u32x $size>],
-                x2: [<u32x $size>],
-                x3: [<u32x $size>],
-                x4: [<u32x $size>],
-                c: [<u32x $size>],
+                pub(crate) x0: [<u32x $size>],
+                pub(crate) x1: [<u32x $size>],
+                pub(crate) x2: [<u32x $size>],
+                pub(crate) x3: [<u32x $size>],
+                pub(crate) x4: [<u32x $size>],
+                pub(crate) c: [<u32x $size>],
             }
 
             #[allow(dead_code)]

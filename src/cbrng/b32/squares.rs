@@ -69,10 +69,10 @@ impl Rng for Squares32 {
     }
 }
 
-#[cfg(feature = "simd")]
+#[cfg(all(feature = "simd", target_arch = "x86_64"))]
 pub use simd::*;
 
-#[cfg(feature = "simd")]
+#[cfg(all(feature = "simd", target_arch = "x86_64"))]
 pub mod simd {
     use std::arch::x86_64::*;
 
@@ -116,6 +116,10 @@ pub mod simd {
         /// The caller must ensure the CPU supports the `avx512f` target feature.
         #[target_feature(enable = "avx512f")]
         pub unsafe fn new(seed: u32) -> Self {
+            assert!(
+                std::arch::is_x86_feature_detected!("avx512f"),
+                "Squares32x8 requires avx512f"
+            );
             let mut k = [0u64; SQUARES32x8];
             let mut seedgen = sm64_from_seed32!(seed);
             k.iter_mut().for_each(|v| {
@@ -175,6 +179,10 @@ pub mod simd {
         /// The caller must ensure the CPU supports the `avx512f,avx512dq` target feature.
         #[target_feature(enable = "avx512f,avx512dq")]
         pub unsafe fn nextu(&mut self) -> [u32; SQUARES32x8] {
+            assert!(
+                std::arch::is_x86_feature_detected!("avx512f"),
+                "Squares32x8 requires avx512f"
+            );
             unsafe {
                 let v = Self::compute(self.c, self.k);
                 self.c = _mm512_add_epi64(self.c, _mm512_set1_epi64(8));
@@ -189,6 +197,10 @@ pub mod simd {
         /// The caller must ensure the CPU supports the `avx512f,avx512dq` target feature.
         #[target_feature(enable = "avx512f,avx512dq")]
         pub unsafe fn nextf(&mut self) -> [f32; SQUARES32x8] {
+            assert!(
+                std::arch::is_x86_feature_detected!("avx512f"),
+                "Squares32x8 requires avx512f"
+            );
             let out = unsafe { self.nextu() };
             let mut dst = [0f32; SQUARES32x8];
             for i in 0..SQUARES32x8 {
@@ -210,5 +222,5 @@ mod tests {
         target_feature = "avx512f",
         target_feature = "avx512dq"
     ))]
-    crate::unsafe_test! { Squares32x8 }
+    crate::unsafe_test! { array; Squares32x8 }
 }

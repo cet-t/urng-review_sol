@@ -19,7 +19,7 @@ use crate::rng::Rng;
 #[repr(C, align(64))]
 #[derive(Debug, Clone, Copy)]
 pub struct Xorshift32 {
-    a: wu32,
+    pub(crate) a: wu32,
 }
 
 impl Xorshift32 {
@@ -27,7 +27,10 @@ impl Xorshift32 {
     pub const fn new(seed: u32) -> Self {
         let mut sm = SplitMix32::new(seed);
         Self {
-            a: wrap!(sm.nextu_const()),
+            a: wrap!({
+                let state = sm.nextu_const();
+                if state == 0 { 1 } else { state }
+            }),
         }
     }
 }
@@ -62,7 +65,7 @@ impl Rng for Xorshift32 {
 #[repr(C, align(64))]
 #[derive(Debug, Clone, Copy)]
 pub struct Xorshift128 {
-    x: [wu32; 4],
+    pub(crate) x: [wu32; 4],
 }
 
 impl Xorshift128 {
@@ -97,10 +100,10 @@ impl Rng for Xorshift128 {
     }
 }
 
-#[cfg(feature = "simd")]
+#[cfg(all(feature = "simd", target_arch = "x86_64"))]
 pub use simd::*;
 
-#[cfg(feature = "simd")]
+#[cfg(all(feature = "simd", target_arch = "x86_64"))]
 pub mod simd {
     use std::arch::x86_64::*;
 
@@ -110,21 +113,26 @@ pub mod simd {
 
     #[repr(C, align(64))]
     pub struct Xorshift32x8 {
-        a: __m256i,
+        pub(crate) a: __m256i,
     }
 
     impl Xorshift32x8 {
         pub fn new(seed: u32) -> Self {
+            assert!(
+                std::arch::is_x86_feature_detected!("avx2"),
+                "Xorshift32x8 requires avx2"
+            );
             let mut sm = SplitMix32::new(seed);
 
             let mut a = [0u32; XORSHIFT32X8];
             for i in 0..XORSHIFT32X8 {
-                a[i] = sm.nextu_const();
+                let state = sm.nextu_const();
+                a[i] = if state == 0 { 1 } else { state };
             }
 
             unsafe {
                 Self {
-                    a: _mm256_loadu_epi32(a.as_ptr() as _),
+                    a: _mm256_loadu_si256(a.as_ptr() as *const __m256i),
                 }
             }
         }
@@ -135,6 +143,10 @@ pub mod simd {
 
         #[inline]
         fn nextuv(&mut self) -> Self::Word {
+            assert!(
+                std::arch::is_x86_feature_detected!("avx2"),
+                "Xorshift32x8 requires avx2"
+            );
             unsafe {
                 let x = self.a;
 

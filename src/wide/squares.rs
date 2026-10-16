@@ -23,8 +23,8 @@ macro_rules! impl_squares32_variants {
             #[allow(dead_code)]
             #[repr(C, align(64))]
             pub struct [<Squares32x $size>] {
-                c: [<u64x $size>],
-                k: [<u64x $size>],
+                pub(crate) c: [<u64x $size>],
+                pub(crate) k: [<u64x $size>],
             }
 
             #[allow(dead_code)]

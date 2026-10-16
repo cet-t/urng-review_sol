@@ -53,6 +53,11 @@ path = "examples/iter/test.rs"
 name = "test"
 path = "examples/test/test.rs"
 
+[[example]]
+name = "fix-bench"
+path = "examples/fix-bench.rs"
+required-features = ["wide", "cabi"]
+
 
 [features]
 rand = ["dep:rand_core"]

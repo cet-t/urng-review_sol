@@ -22,8 +22,8 @@ macro_rules! impl_variants {
             #[allow(dead_code)]
             #[repr(C, align(64))]
             pub struct [<Xoroshiro64Ssx $size>] {
-                s0: [<u32x $size>],
-                s1: [<u32x $size>],
+                pub(crate) s0: [<u32x $size>],
+                pub(crate) s1: [<u32x $size>],
             }
 
             #[allow(dead_code)]

@@ -3,7 +3,6 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-
 /// SIMD bit-trick converters mapping an integer lane vector uniformly onto
 /// `[0, 1)`, matching the scalar [`u2f_01`] exactly lane-by-lane (top mantissa
 /// bits via `(x >> bias) | exponent`, then `- 1.0`). Used by every SIMD
@@ -542,9 +541,27 @@ pub(crate) use safe_test;
 
 macro_rules! unsafe_test {
     ($($name:ident),+) => {
+        $crate::unsafe_test!(@methods nextuv, nextfv; []; $($name),+);
+    };
+    (array; $($name:ident),+) => {
+        $crate::unsafe_test!(@methods nextu, nextf; []; $($name),+);
+    };
+    (requires $feature:tt; $($name:ident),+) => {
+        $crate::unsafe_test!(@methods nextuv, nextfv; [$feature]; $($name),+);
+    };
+    (@supported [$($feature:tt),*]) => {
+        true $(&& std::arch::is_x86_feature_detected!($feature))*
+    };
+    (@methods $nextu:ident, $nextf:ident; $features:tt; $($name:ident),+) => {
         $(pastey::paste! {
             #[test]
             fn [<test_ $name:snake>]() {
+                #[allow(unused_imports)]
+                use $crate::RngV as _;
+                if !$crate::unsafe_test!(@supported $features) {
+                    eprintln!("CPU does not support the required SIMD features");
+                    return;
+                }
                 unsafe fn as_bytes<T>(v: &T) -> &[u8] {
                     unsafe {
                         std::slice::from_raw_parts(v as *const T as *const u8, std::mem::size_of::<T>())
@@ -555,12 +572,12 @@ macro_rules! unsafe_test {
                     let mut rng1 = $name::new(0);
                     let mut rng2 = $name::new(0);
 
-                    let u1 = rng1.nextuv();
-                    let u2 = rng2.nextuv();
+                    let u1 = rng1.$nextu();
+                    let u2 = rng2.$nextu();
                     assert_eq!(as_bytes(&u1), as_bytes(&u2));
 
-                    let f1 = rng1.nextfv();
-                    let f2 = rng2.nextfv();
+                    let f1 = rng1.$nextf();
+                    let f2 = rng2.$nextf();
                     assert_eq!(as_bytes(&f1), as_bytes(&f2));
                 }
             }
@@ -568,6 +585,24 @@ macro_rules! unsafe_test {
     };
 }
 pub(crate) use unsafe_test;
+
+/// Uniform bounded draws for array generators. A rejection consumes an extra
+/// block and discards its other lanes, preserving one shared scalar algorithm.
+pub(crate) fn sample_randi_block<W: crate::Word, const N: usize>(
+    mut next: impl FnMut() -> [W; N],
+    min: W::Int,
+    max: W::Int,
+) -> [W::Int; N] {
+    let first = next();
+    std::array::from_fn(|lane| {
+        let mut initial = Some(first[lane]);
+        W::sample_randi(
+            &mut || initial.take().unwrap_or_else(|| next()[lane]),
+            min,
+            max,
+        )
+    })
+}
 
 /// Implements `Default` and [`crate::Seed`] for one or more `seed: u32`-constructed
 /// RNGs. `Default` seeds via [`crate::_internal::default_seed32`] (a time-based,
@@ -621,40 +656,27 @@ pub(crate) use impl_default_from_seed64;
 
 #[cfg(feature = "rand")]
 macro_rules! impl_try_rng_trait {
-    ($($type:ty),* $(,)?) => {
-        $(
-            impl rand_core::TryRng for $type {
-                type Error = std::convert::Infallible;
-
-                fn try_next_u32(&mut self) -> Result<u32, Self::Error> {
-                    Ok(self.nextu())
-                }
-
-                fn try_next_u64(&mut self) -> Result<u64, Self::Error> {
-                    let hi = self.nextu() as u64;
-                    let lo = self.nextu() as u64;
-                    Ok(hi << 32 | lo)
-                }
-
-                fn try_fill_bytes(&mut self, dst: &mut [u8]) -> Result<(), Self::Error> {
-                    let mut i = 0;
-                    while i < dst.len() {
-                        let remaining = dst.len() - i;
-                        if remaining >= 4 {
-                            let val = self.nextu();
-                            dst[i..i + 4].copy_from_slice(&val.to_le_bytes());
-                            i += 4;
-                        } else {
-                            let val = self.nextu();
-                            dst[i..].copy_from_slice(&val.to_le_bytes()[..remaining]);
-                            i += remaining;
-                        }
-                    }
-                    Ok(())
-                }
+    ($($type:ty),* $(,)?) => {$(
+        impl rand_core::TryRng for $type {
+            type Error = std::convert::Infallible;
+            fn try_next_u32(&mut self) -> Result<u32, Self::Error> {
+                Ok($crate::Rng::nextu(self) as u32)
             }
-        )*
-    };
+            fn try_next_u64(&mut self) -> Result<u64, Self::Error> {
+                let first = $crate::Rng::nextu(self);
+                if size_of_val(&first) == 8 { Ok(first as u64) }
+                else { Ok(((first as u64) << 32) | $crate::Rng::nextu(self) as u64) }
+            }
+            fn try_fill_bytes(&mut self, dst: &mut [u8]) -> Result<(), Self::Error> {
+                let width = size_of::<<Self as $crate::Rng>::Word>();
+                for chunk in dst.chunks_mut(width) {
+                    let bytes = ($crate::Rng::nextu(self) as u64).to_le_bytes();
+                    chunk.copy_from_slice(&bytes[..chunk.len()]);
+                }
+                Ok(())
+            }
+        }
+    )*};
 }
 #[cfg(feature = "rand")]
 pub(crate) use impl_try_rng_trait;
@@ -667,7 +689,7 @@ macro_rules! impl_rand_trait {
                 type Seed = [u8; 4];
 
                 fn from_seed(seed: Self::Seed) -> Self {
-                    let seed = u32::from_ne_bytes(seed);
+                    let seed = u32::from_le_bytes(seed);
                     Self::new(seed.into())
                 }
             }

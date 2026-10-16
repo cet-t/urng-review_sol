@@ -14,7 +14,7 @@ use crate::{Rng, SplitMix64};
 #[repr(C, align(64))]
 #[derive(Debug, Clone, Copy)]
 pub struct WyHash64 {
-    s: wu64,
+    pub(crate) s: wu64,
 }
 
 impl WyHash64 {

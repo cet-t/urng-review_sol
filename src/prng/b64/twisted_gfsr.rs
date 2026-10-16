@@ -1,10 +1,6 @@
 use wrapn::{wrap, wusize};
 
-use crate::{
-    _internal::{i2f_bits, u2f_01},
-    SplitMix32,
-    rng::Rng,
-};
+use crate::rng::Rng;
 
 // --- TwistedGFSR ---
 
@@ -20,8 +16,8 @@ use crate::{
 #[repr(C, align(64))]
 #[derive(Debug, Clone, Copy)]
 pub struct TwistedGFSR {
-    seed: [u32; N_GFSR],
-    index: wusize,
+    pub(crate) seed: [u32; N_GFSR],
+    pub(crate) index: wusize,
 }
 
 const N_GFSR: usize = 25;
@@ -31,8 +27,8 @@ const MAG01: [u32; 2] = [0x0, 0x8ebf_d028];
 impl TwistedGFSR {
     /// Creates a new `TwistedGFSR` instance with the given seed.
     pub fn new(seed: u64) -> Self {
-        let mut seedgen = SplitMix32::new(seed as u32);
-        let seed = [0u32; N_GFSR].map(|_| seedgen.nextu_const());
+        let mut seedgen = crate::SplitMix64::new(seed);
+        let seed = [0u32; N_GFSR].map(|_| seedgen.nextu_const() as u32);
         Self {
             seed,
             index: wrap!(N_GFSR),
@@ -53,11 +49,8 @@ impl TwistedGFSR {
     }
 }
 
-impl Rng for TwistedGFSR {
-    type Word = u64;
-
-    #[inline]
-    fn nextu(&mut self) -> Self::Word {
+impl TwistedGFSR {
+    fn next_word32(&mut self) -> u32 {
         if self.index >= N_GFSR {
             self.twist();
         }
@@ -66,25 +59,14 @@ impl Rng for TwistedGFSR {
         y ^= (y << 15) & 0xdb8b_0000;
         y ^= y >> 16;
         self.index += 1;
-        u64::from(y)
+        y
     }
+}
 
-    #[inline(always)]
-    fn nextf(&mut self) -> f64 {
-        // TwistedGFSR emits 32-bit-range words in a u64; use the 32-bit
-        // bit-trick (matching the scalar `u2f_01`) widened to f64.
-        u2f_01!(f32, 32, self.nextu() as u32) as f64
-    }
-
-    #[inline(always)]
-    fn randi(&mut self, min: i64, max: i64) -> i64 {
-        let range = (max as i128 - min as i128 + 1) as u128;
-        ((self.nextu() as u128 * range) >> 32) as i64 + min
-    }
-
-    #[inline(always)]
-    fn randf(&mut self, min: f64, max: f64) -> f64 {
-        min + self.nextf() * (max - min)
+impl Rng for TwistedGFSR {
+    type Word = u64;
+    fn nextu(&mut self) -> u64 {
+        ((self.next_word32() as u64) << 32) | self.next_word32() as u64
     }
 }
 

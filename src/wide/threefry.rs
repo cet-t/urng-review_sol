@@ -25,14 +25,14 @@ macro_rules! impl_threefry32x2_variants {
             #[allow(dead_code)]
             #[repr(C, align(64))]
             pub struct [<Threefry32x2x $size>] {
-                c0: [<u32x $size>],
-                c1: [<u32x $size>],
-                k0: [<u32x $size>],
-                k1: [<u32x $size>],
-                k2: [<u32x $size>],
-                buf0: [<u32x $size>],
-                buf1: [<u32x $size>],
-                pos: usize,
+                pub(crate) c0: [<u32x $size>],
+                pub(crate) c1: [<u32x $size>],
+                pub(crate) k0: [<u32x $size>],
+                pub(crate) k1: [<u32x $size>],
+                pub(crate) k2: [<u32x $size>],
+                pub(crate) buf0: [<u32x $size>],
+                pub(crate) buf1: [<u32x $size>],
+                pub(crate) pos: usize,
             }
 
             #[allow(dead_code)]
@@ -98,6 +98,8 @@ macro_rules! impl_threefry32x2_variants {
                     self.buf0 = buf0;
                     self.buf1 = buf1;
                     self.c0 += [<u32x $size>]::splat(1);
+                    let carry = self.c0.simd_eq([<u32x $size>]::splat(0)) & [<u32x $size>]::splat(1);
+                    self.c1 += carry;
                     self.pos = 0;
                 }
 
@@ -145,23 +147,23 @@ macro_rules! impl_threefry32x4_variants {
             #[allow(dead_code)]
             #[repr(C, align(64))]
             pub struct [<Threefry32x4x $size>] {
-                c0: [<u32x $size>],
-                c1: [<u32x $size>],
-                c2: [<u32x $size>],
-                c3: [<u32x $size>],
-                k0: [<u32x $size>],
-                k1: [<u32x $size>],
-                k2: [<u32x $size>],
-                k3: [<u32x $size>],
-                k4: [<u32x $size>],
-                tw0: [<u32x $size>],
-                tw1: [<u32x $size>],
-                tw2: [<u32x $size>],
-                buf0: [<u32x $size>],
-                buf1: [<u32x $size>],
-                buf2: [<u32x $size>],
-                buf3: [<u32x $size>],
-                pos: usize,
+                pub(crate) c0: [<u32x $size>],
+                pub(crate) c1: [<u32x $size>],
+                pub(crate) c2: [<u32x $size>],
+                pub(crate) c3: [<u32x $size>],
+                pub(crate) k0: [<u32x $size>],
+                pub(crate) k1: [<u32x $size>],
+                pub(crate) k2: [<u32x $size>],
+                pub(crate) k3: [<u32x $size>],
+                pub(crate) k4: [<u32x $size>],
+                pub(crate) tw0: [<u32x $size>],
+                pub(crate) tw1: [<u32x $size>],
+                pub(crate) tw2: [<u32x $size>],
+                pub(crate) buf0: [<u32x $size>],
+                pub(crate) buf1: [<u32x $size>],
+                pub(crate) buf2: [<u32x $size>],
+                pub(crate) buf3: [<u32x $size>],
+                pub(crate) pos: usize,
             }
 
             #[allow(dead_code)]
@@ -173,8 +175,8 @@ macro_rules! impl_threefry32x4_variants {
                     let k1 = [<u32x $size>]::from([0u32; $size].map(|_| seedgen.nextu()));
                     let k2 = [<u32x $size>]::from([0u32; $size].map(|_| seedgen.nextu()));
                     let k3 = [<u32x $size>]::from([0u32; $size].map(|_| seedgen.nextu()));
-                    let tw0 = [<u32x $size>]::from([0u32; $size].map(|_| seedgen.nextu()));
-                    let tw1 = [<u32x $size>]::from([0u32; $size].map(|_| seedgen.nextu()));
+                    let tw0 = [<u32x $size>]::splat(0);
+                    let tw1 = [<u32x $size>]::splat(0);
                     Self {
                         c0: [<u32x $size>]::splat(0),
                         c1: [<u32x $size>]::splat(0),
@@ -237,10 +239,10 @@ macro_rules! impl_threefry32x4_variants {
                     round!(10, 26); round!(11, 21); round!(13, 27); round!(23, 5);
 
                     (
-                        (v0 + self.k0) ^ self.c0,
-                        (v1 + self.k1 + self.tw2) ^ self.c1,
-                        (v2 + self.k2 + self.tw0) ^ self.c2,
-                        (v3 + self.k3 + [<u32x $size>]::splat(5)) ^ self.c3,
+                        v0 + self.k0,
+                        v1 + self.k1 + self.tw2,
+                        v2 + self.k2 + self.tw0,
+                        v3 + self.k3 + [<u32x $size>]::splat(5),
                     )
                 }
 
@@ -253,6 +255,12 @@ macro_rules! impl_threefry32x4_variants {
                     self.buf2 = buf2;
                     self.buf3 = buf3;
                     self.c0 += [<u32x $size>]::splat(1);
+                    let carry = self.c0.simd_eq([<u32x $size>]::splat(0)) & [<u32x $size>]::splat(1);
+                    self.c1 += carry;
+                    let carry = self.c1.simd_eq([<u32x $size>]::splat(0)) & carry;
+                    self.c2 += carry;
+                    let carry = self.c2.simd_eq([<u32x $size>]::splat(0)) & carry;
+                    self.c3 += carry;
                     self.pos = 0;
                 }
 

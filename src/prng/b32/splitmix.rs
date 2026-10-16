@@ -17,7 +17,7 @@ use crate::rng::Rng;
 #[repr(C, align(64))]
 #[derive(Debug, Clone, Copy)]
 pub struct SplitMix32 {
-    state: wu32,
+    pub(crate) state: wu32,
 }
 
 const A: u64 = 0xFF51_AFD7_ED55_8CCD;
@@ -35,7 +35,11 @@ impl SplitMix32 {
     pub(crate) const fn nextu_const(&mut self) -> u32 {
         self.state.0.0 = self.state.0.0.wrapping_add(0x9E3779B9);
 
-        let mut z = self.state.0.0 as u64;
+        Self::compute(self.state.0.0)
+    }
+
+    pub(crate) const fn compute(state: u32) -> u32 {
+        let mut z = state as u64;
         z = (z ^ (z >> 16)).wrapping_mul(A);
         z = (z ^ (z >> 16)).wrapping_mul(B);
         (z ^ (z >> 16)) as u32
@@ -49,17 +53,14 @@ impl Rng for SplitMix32 {
     fn nextu(&mut self) -> Self::Word {
         self.state += 0x9E3779B9;
 
-        let mut z = self.state.cast::<u64>();
-        z = (z ^ (z >> 16)) * A;
-        z = (z ^ (z >> 16)) * B;
-        *(z ^ (z >> 16)).cast::<u32>()
+        Self::compute(*self.state)
     }
 }
 
-#[cfg(feature = "simd")]
+#[cfg(all(feature = "simd", target_arch = "x86_64"))]
 pub use simd::*;
 
-#[cfg(feature = "simd")]
+#[cfg(all(feature = "simd", target_arch = "x86_64"))]
 pub mod simd {
     #[cfg(target_arch = "x86_64")]
     use std::arch::x86_64::*;
@@ -97,12 +98,14 @@ pub mod simd {
         /// The caller must ensure the CPU supports the `avx512f` target feature.
         #[target_feature(enable = "avx512f")]
         pub unsafe fn new(seed: u32) -> Self {
-            let mut sm = SplitMix32::new(seed);
-
-            let mut s = [0u32; SPLITMIX32X16];
-            for i in 0..SPLITMIX32X16 {
-                s[i] = sm.nextu_const();
-            }
+            assert!(
+                std::arch::is_x86_feature_detected!("avx512f"),
+                "SplitMix32x16 requires avx512f"
+            );
+            let first = (seed | 1).wrapping_sub(15u32.wrapping_mul(SPLITMIX32_GAMMA));
+            let s: [u32; 16] = std::array::from_fn(|i| {
+                first.wrapping_add((i as u32).wrapping_mul(SPLITMIX32_GAMMA))
+            });
 
             unsafe {
                 Self {
@@ -118,15 +121,8 @@ pub mod simd {
         /// The caller must ensure the CPU supports the `avx512f` target feature.
         #[target_feature(enable = "avx512f")]
         pub unsafe fn compute(state: __m512i) -> __m512i {
-            let c1 = _mm512_set1_epi32(0x85EB_CA6Bu32 as i32);
-            let c2 = _mm512_set1_epi32(0xC2B2_AE35u32 as i32);
-
-            let mut z = state;
-            z = _mm512_xor_si512(z, _mm512_srli_epi32(z, 16));
-            z = _mm512_add_epi32(z, c1);
-            z = _mm512_xor_si512(z, _mm512_srli_epi32(z, 13));
-            z = _mm512_add_epi32(z, c2);
-            _mm512_xor_si512(z, _mm512_srli_epi32(z, 16))
+            let words: [u32; 16] = unsafe { std::mem::transmute(state) };
+            unsafe { std::mem::transmute(words.map(SplitMix32::compute)) }
         }
     }
 
@@ -135,13 +131,16 @@ pub mod simd {
         type Word = __m512i;
 
         fn nextuv(&mut self) -> Self::Word {
+            assert!(
+                std::arch::is_x86_feature_detected!("avx512f"),
+                "SplitMix32x16 requires avx512f"
+            );
             unsafe {
-                let v = Self::compute(self.state);
                 self.state = _mm512_add_epi32(
                     self.state,
                     _mm512_set1_epi32(SPLITMIX32_GAMMA.wrapping_mul(SPLITMIX32X16 as u32) as i32),
                 );
-                v
+                Self::compute(self.state)
             }
         }
     }

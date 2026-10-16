@@ -19,7 +19,7 @@ use crate::{prng::b32::SplitMix32, rng::Rng};
 #[repr(C, align(64))]
 #[derive(Debug, Clone, Copy)]
 pub struct Xoshiro128Pp {
-    s: [wu32; 4],
+    pub(crate) s: [wu32; 4],
 }
 
 impl Xoshiro128Pp {
@@ -75,7 +75,7 @@ impl Rng for Xoshiro128Pp {
 #[repr(C, align(64))]
 #[derive(Debug, Clone, Copy)]
 pub struct Xoshiro128Ss {
-    s: [wu32; 4],
+    pub(crate) s: [wu32; 4],
 }
 
 impl Xoshiro128Ss {
@@ -112,10 +112,10 @@ impl Rng for Xoshiro128Ss {
     }
 }
 
-#[cfg(feature = "simd")]
+#[cfg(all(feature = "simd", target_arch = "x86_64"))]
 pub use simd::*;
 
-#[cfg(feature = "simd")]
+#[cfg(all(feature = "simd", target_arch = "x86_64"))]
 pub mod simd {
     use std::arch::x86_64::*;
 
@@ -138,10 +138,10 @@ pub mod simd {
     #[cfg(target_arch = "x86_64")]
     #[repr(C, align(64))]
     pub struct Xoshiro128Ppx16 {
-        s0: __m512i,
-        s1: __m512i,
-        s2: __m512i,
-        s3: __m512i,
+        pub(crate) s0: __m512i,
+        pub(crate) s1: __m512i,
+        pub(crate) s2: __m512i,
+        pub(crate) s3: __m512i,
     }
 
     #[cfg(target_arch = "x86_64")]
@@ -153,6 +153,10 @@ pub mod simd {
         /// Must only be called on a CPU that supports AVX-512F.
         #[target_feature(enable = "avx512f")]
         pub unsafe fn new(seed: u32) -> Self {
+            assert!(
+                std::arch::is_x86_feature_detected!("avx512f"),
+                "Xoshiro128Ppx16 requires avx512f"
+            );
             use crate::SplitMix32;
 
             let mut seedgen = SplitMix32::new(seed);
@@ -178,6 +182,10 @@ pub mod simd {
 
         #[inline]
         fn nextuv(&mut self) -> Self::Word {
+            assert!(
+                std::arch::is_x86_feature_detected!("avx512f"),
+                "Xoshiro128Ppx16 requires avx512f"
+            );
             let s0 = self.s0;
             let s1 = self.s1;
             let s2 = self.s2;
@@ -229,10 +237,10 @@ pub mod simd {
     #[cfg(target_arch = "x86_64")]
     #[repr(C, align(64))]
     pub struct Xoshiro128Ssx16 {
-        s0: __m512i,
-        s1: __m512i,
-        s2: __m512i,
-        s3: __m512i,
+        pub(crate) s0: __m512i,
+        pub(crate) s1: __m512i,
+        pub(crate) s2: __m512i,
+        pub(crate) s3: __m512i,
     }
 
     #[cfg(target_arch = "x86_64")]
@@ -244,6 +252,10 @@ pub mod simd {
         /// Must only be called on a CPU that supports AVX-512F.
         #[target_feature(enable = "avx512f")]
         pub unsafe fn new(seed: u32) -> Self {
+            assert!(
+                std::arch::is_x86_feature_detected!("avx512f"),
+                "Xoshiro128Ssx16 requires avx512f"
+            );
             let mut seedgen = SplitMix32::new(seed);
             let mut sv = [[0u32; 16]; 4];
             for vals in sv.iter_mut() {
@@ -267,6 +279,10 @@ pub mod simd {
 
         #[inline]
         fn nextuv(&mut self) -> Self::Word {
+            assert!(
+                std::arch::is_x86_feature_detected!("avx512f"),
+                "Xoshiro128Ssx16 requires avx512f"
+            );
             let s0 = self.s0;
             let s1 = self.s1;
             let s2 = self.s2;

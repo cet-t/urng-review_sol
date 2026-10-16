@@ -24,10 +24,10 @@ macro_rules! impl_variants {
             #[doc = "```"]
             #[repr(C, align(64))]
             pub struct [<$name x $size>] {
-                s0: [<u32x $size>],
-                s1: [<u32x $size>],
-                s2: [<u32x $size>],
-                s3: [<u32x $size>],
+                pub(crate) s0: [<u32x $size>],
+                pub(crate) s1: [<u32x $size>],
+                pub(crate) s2: [<u32x $size>],
+                pub(crate) s3: [<u32x $size>],
             }
 
             impl [<$name x $size>] {

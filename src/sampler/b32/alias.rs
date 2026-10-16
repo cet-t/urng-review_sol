@@ -28,7 +28,8 @@ pub struct Alias32<'a, R: Rng<Word = u32> + 'a> {
 }
 
 impl<'a, R: Rng<Word = u32> + 'a> Alias32<'a, R> {
-    /// Creates a new sampler with the given random number generator and weights.
+    /// Creates a sampler from finite, nonnegative weights with positive total.
+    /// Panics for an empty slice, negative/nonfinite weights, or all-zero weights.
     pub fn new(rng: &'a mut R, weights: &[f32]) -> Self {
         let (prob, alias) = Self::build(weights);
         Self { rng, prob, alias }
@@ -36,14 +37,22 @@ impl<'a, R: Rng<Word = u32> + 'a> Alias32<'a, R> {
 
     fn build(weights: &[f32]) -> (Vec<f32>, Vec<usize>) {
         let n = weights.len();
-        let total: f32 = weights.iter().sum();
+        assert!(
+            n != 0 && weights.iter().all(|w| w.is_finite() && *w >= 0.0),
+            "invalid weights"
+        );
+        let maximum = weights.iter().copied().fold(0.0f32, f32::max);
+        assert!(maximum > 0.0, "all weights are zero");
+        // Normalize before summing. Dividing each weight by the maximum avoids
+        // overflow for [MAX, MAX] and reciprocal overflow for tiny weights.
+        let total: f32 = weights.iter().map(|w| *w / maximum).sum();
         let scale = n as f32 / total;
 
         let mut prob = vec![0.0f32; n];
         let mut alias = vec![0usize; n];
         let mut small = Vec::with_capacity(n);
         let mut large = Vec::with_capacity(n);
-        let mut p: Vec<f32> = weights.iter().map(|&w| w * scale).collect();
+        let mut p: Vec<f32> = weights.iter().map(|&w| (w / maximum) * scale).collect();
 
         for (i, &pi) in p.iter().enumerate() {
             if pi < 1.0 {
@@ -53,7 +62,9 @@ impl<'a, R: Rng<Word = u32> + 'a> Alias32<'a, R> {
             }
         }
 
-        while let (Some(s), Some(l)) = (small.pop(), large.last().copied()) {
+        while !small.is_empty() && !large.is_empty() {
+            let s = small.pop().unwrap();
+            let l = *large.last().unwrap();
             prob[s] = p[s];
             alias[s] = l;
             p[l] -= 1.0 - p[s];
@@ -82,7 +93,7 @@ impl<'a, R: Rng<Word = u32> + 'a> Sampler<'a, R> for Alias32<'a, R> {
 
     fn sample(&mut self) -> usize {
         let n = self.prob.len();
-        let i = self.rng.randi(0, n as i32 - 1) as usize;
+        let i = self.rng.index(n);
         let u = self.rng.randf(0.0, 1.0);
         if u < self.prob[i] { i } else { self.alias[i] }
     }

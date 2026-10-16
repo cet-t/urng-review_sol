@@ -1,11 +1,11 @@
 //! Wide (portable SIMD) random number generators.
 //!
-//! This module provides SIMD-accelerated variants of the generators in [`crate::prng::b32`],
+//! This module provides SIMD-accelerated variants of scalar generators such as [`crate::Sfc32`],
 //! built on top of the [`wide`] crate. Each type (e.g. `Jsf32x8`, `Sfc32x16`) produces
 //! `$size` values per call using `u32x4` / `u32x8` / `u32x16` lane types, making them a
 //! portable alternative to the `std::arch`-based SIMD implementations.
 //!
-//! Each generator implements [`WRng`], which supplies `nextf`, `randi` and `randf`
+//! Each generator implements [`RngW`], which supplies `nextf`, `randi` and `randf`
 //! as default methods derived from the type's own `nextu`.
 mod _internal;
 mod jsf;
